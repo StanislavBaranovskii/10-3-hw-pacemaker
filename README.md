@@ -107,6 +107,62 @@ sudo pcs status
 
 *Пришлите скриншот рабочей конфигурации и состояние сервиса для каждого нода.*
 ```
+sudo apt install drbd-utils
+sudo modprobe drbd
+sudo nano /etc/modules  # Добаляем строку drbd
+sudo lsmod |grep drbd
+#Добавляем к ВМ накопитель и подготавливаем диск
+ls /dev |grep sd 
+sudo fdisk /dev/sdb
+pvcreate /dev/sdb1
+vgcreate vg0 /dev/sdb1
+lvcreate -L3G -n www vg0
+lvcreate -L3G -n mysql vg0
+#Создаем конфиг файлы /etc/drbd.d/www.res и /etc/drbd.d/mysql.res
+#Команды на обоих нодах:
+drbdadm create-md www
+drbdadm create-md mysql
+drbdadm up all
+#Команды на первой ноде:
+drbdadm primary --force www
+drbdadm primary --force mysql
+#Команды на второй ноде:
+drbdadm secondary www
+#Подключаем разделы и проверяем репликацию на обоих нодах
+mkdir /mnt/www
+mkdir /mnt/mysql
+mount /dev/drbd0 /mnt/www
+mount /dev/drbd2 /mnt/mysql
+```
+Содержимое конфиг файлов:
+```
+resource www {
+   protocol C;
+   disk {
+      fencing resource-only;
+   }
+   handlers {
+      fence-peer "/usr/lib/drbd/crm-fence-peer.sh";
+      after-resync-target "/usr/lib/drbd/crm-unfence-peer.sh";
+   }
+   syncer {
+      rate 110M;
+   }
+   on nodeTwo
+   {
+      device /dev/drbd2;
+      disk /dev/vg0/www;
+      address 192.168.56.2:7794;
+      meta-disk internal;
+   }
+   on nodeOne
+   {
+      device /dev/drbd2;
+      disk /dev/vg0/www;
+      address 192.168.56.1:7794;
+      meta-disk internal;
+   }
+}
 ```
 ![Скриншот рабочей конфигурации и состояние сервиса для каждого нода](https://github.com/StanislavBaranovskii/10-3-hw-pacemaker/blob/main/img/10-3-4.png "Скриншот рабочей конфигурации и состояние сервиса для каждого нода")
 
